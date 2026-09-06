@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Plane Shooter</title>
+<style>
+  body {
+    margin: 0;
+    background: #10131a;
+    color: #e8e8e8;
+    font-family: system-ui, -apple-system, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  h1 {
+    color: #7fd1ff;
+    font-size: 28px;
+    font-weight: 500;
+    margin: 18px 0 4px;
+  }
+  #setup {
+    margin: 12px 0;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  #setup input {
+    background: #1c2230;
+    border: 1px solid #34405a;
+    color: #e8e8e8;
+    padding: 7px 10px;
+    border-radius: 6px;
+    font-size: 14px;
+  }
+  #setup input[type="text"] { width: 160px; }
+  #setup input[type="number"] { width: 70px; }
+  button {
+    background: #2b6cb0;
+    color: #fff;
+    border: 0;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  button:hover { background: #3182ce; }
+  #hud {
+    display: flex;
+    gap: 28px;
+    font-size: 15px;
+    margin: 10px 0 6px;
+  }
+  canvas {
+    background: #0a0d14;
+    border: 1px solid #29344a;
+    border-radius: 8px;
+    display: block;
+  }
+  #hint {
+    color: #7d8798;
+    font-size: 13px;
+    margin-top: 10px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Plane Shooter</h1>
+
+<div id="setup">
+  <label>Pilot name <input type="text" id="nameInput" value="Pilot"></label>
+  <label>Starting lives <input type="number" id="livesInput" value="3"></label>
+  <button id="startBtn">Start</button>
+</div>
+
+<div id="hud">
+  <span>Pilot: <b id="pilotName">-</b></span>
+  <span>Score: <b id="score">0</b></span>
+  <span>Lives: <b id="lives">0</b></span>
+</div>
+
+<canvas id="game" width="480" height="640"></canvas>
+
+<div id="hint">Move with arrow keys or W A S D &middot; Space to fire</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const W = canvas.width;
+const H = canvas.height;
+
+let player, bullets, enemies, score, lives, running, spawnTimer;
+let pilotName = "Pilot";
+
+const keys = {};
+
+const PLAYER_SPEED = 5;
+const BULLET_SPEED = 7;
+const ENEMY_SPEED = 1.8;
+const FIRE_COOLDOWN = 14;
+
+function reset() {
+  player = { x: W / 2 - 15, y: H - 60, w: 30, h: 34 };
+  bullets = [];
+  enemies = [];
+  score = 0;
+  spawnTimer = 0;
+  updateHud();
+}
+
+function startGame() {
+  const rawName = document.getElementById("nameInput").value;
+  const rawLives = document.getElementById("livesInput").value;
+
+  pilotName = rawName;
+  lives = parseInt(rawLives, 10);
+
+  reset();
+  document.getElementById("pilotName").textContent = pilotName;
+  running = true;
+}
+
+function updateHud() {
+  document.getElementById("score").textContent = score;
+  document.getElementById("lives").textContent = lives;
+}
+
+function spawnEnemy() {
+  const size = 30;
+  enemies.push({
+    x: Math.random() * (W - size),
+    y: -size,
+    w: size,
+    h: size
+  });
+}
+
+function update() {
+  if (!running) return;
+
+  if (keys["ArrowLeft"] || keys["a"]) player.x -= PLAYER_SPEED;
+  if (keys["ArrowRight"] || keys["d"]) player.x += PLAYER_SPEED;
+  if (keys["ArrowUp"] || keys["w"]) player.y -= PLAYER_SPEED;
+  if (keys["ArrowDown"] || keys["s"]) player.y += PLAYER_SPEED;
+
+  player.x = Math.max(0, Math.min(W - player.w, player.x));
+  player.y = Math.max(0, Math.min(H - player.h, player.y));
+
+  if (keys[" "] && spawnTimer % FIRE_COOLDOWN === 0) {
+    bullets.push({
+      x: player.x + player.w / 2 - 2,
+      y: player.y,
+      w: 4,
+      h: 12
+    });
+  }
+
+  for (const b of bullets) b.y -= BULLET_SPEED;
+  bullets = bullets.filter(b => b.y + b.h > 0);
+
+  spawnTimer++;
+  if (spawnTimer % 45 === 0) spawnEnemy();
+
+  for (const e of enemies) e.y += ENEMY_SPEED;
+
+  for (const e of enemies) {
+    for (const b of bullets) {
+      if (b.x < e.x + e.w && b.x + b.w > e.x &&
+          b.y < e.y + e.h && b.y + b.h > e.y) {
+        e.hit = true;
+        b.hit = true;
+        score += 10;
+      }
+    }
+  }
+
+  enemies = enemies.filter(e => !e.hit);
+  bullets = bullets.filter(b => !b.hit);
+  updateHud();
+
+  for (const e of enemies) {
+    const overlap =
+      player.x < e.x + e.w && player.x + player.w > e.x &&
+      player.y < e.y + e.h && player.y + player.h > e.y;
+
+    if (overlap) {
+      e.hit = true;
+      lives -= 1;
+      updateHud();
+    }
+  }
+
+  enemies = enemies.filter(e => !e.hit && e.y < H + 40);
+
+  if (lives <= 0) {
+    running = false;
+    drawGameOver();
+  }
+}
+
+function draw() {
+  ctx.fillStyle = "#0a0d14";
+  ctx.fillRect(0, 0, W, H);
+
+  if (player) {
+    ctx.fillStyle = "#7fd1ff";
+    ctx.beginPath();
+    ctx.moveTo(player.x + player.w / 2, player.y);
+    ctx.lineTo(player.x + player.w, player.y + player.h);
+    ctx.lineTo(player.x + player.w / 2, player.y + player.h - 8);
+    ctx.lineTo(player.x, player.y + player.h);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.fillStyle = "#ffe066";
+  for (const b of bullets) ctx.fillRect(b.x, b.y, b.w, b.h);
+
+  ctx.fillStyle = "#ff6b6b";
+  for (const e of enemies) ctx.fillRect(e.x, e.y, e.w, e.h);
+}
+
+function drawGameOver() {
+  ctx.fillStyle = "rgba(10, 13, 20, 0.82)";
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#ff6b6b";
+  ctx.font = "500 38px system-ui";
+  ctx.textAlign = "center";
+  ctx.fillText("Game over", W / 2, H / 2 - 12);
+  ctx.fillStyle = "#e8e8e8";
+  ctx.font = "400 18px system-ui";
+  ctx.fillText(pilotName + " scored " + score, W / 2, H / 2 + 26);
+}
+
+function loop() {
+  update();
+  if (running) draw();
+  requestAnimationFrame(loop);
+}
+
+document.addEventListener("keydown", e => {
+  keys[e.key] = true;
+  if (e.key === " ") e.preventDefault();
+});
+document.addEventListener("keyup", e => { keys[e.key] = false; });
+document.getElementById("startBtn").addEventListener("click", startGame);
+
+reset();
+running = false;
+draw();
+loop();
+</script>
+
+</body>
+</html>
